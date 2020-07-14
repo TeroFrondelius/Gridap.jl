@@ -6,8 +6,8 @@ struct MultiFieldArray{T,N,A<:AbstractArray{T,N}} <: AbstractArray{T,N}
   coordinates::Vector{NTuple{N,Int}}
   ptrs::Array{Int,N}
   block_size::NTuple{N,Int}
-  scalar_size::NTuple{N,Int}
-  cumulative_block_sizes::Vector{Vector{Int}}
+  scalar_size::Union{NTuple{N,Int},Nothing}
+  cumulative_block_sizes::Union{Vector{Vector{Int}},Nothing}
 
   function MultiFieldArray(
     blocks::Vector{A},
@@ -229,6 +229,11 @@ function _move_cached_arrays!(r::MultiFieldArray,c::MultiFieldArray)
 end
 
 function _get_scalar_size(N,blocks,coordinates,block_size)
+  try 
+     (length(blocks)>0) && (blocks[1])  
+  catch  
+     return nothing 
+  end 
   s=zeros(Int,N)
   visited_coordinates = Vector{Vector{Bool}}(undef,N)
   for i=1:N
@@ -245,10 +250,13 @@ function _get_scalar_size(N,blocks,coordinates,block_size)
   Tuple(s) 
 end 
 
-function Base.size(a::MultiFieldArray)
-  a.scalar_size
+function Base.size(a::MultiFieldArray{T,N}) where {T,N}
+  if ( a.scalar_size isa Nothing )
+    _get_scalar_size(N,a.blocks,a.coordinates,a.block_size)
+  else
+    a.scalar_size
+  end
 end
-
 
 function Base.length(a::MultiFieldArray)
   result=0
@@ -262,6 +270,11 @@ function _get_cumulative_block_sizes(N,
                                      block_size,
                                      blocks,
                                      coordinates)
+  try 
+     (length(blocks)>0) && (blocks[1])  
+  catch  
+     return nothing 
+  end 
   result  = Vector{Vector{Int}}(undef,N)
   visited = Vector{Vector{Bool}}(undef,N)
   for i=1:N
@@ -287,7 +300,15 @@ end
 function _find_block_and_local_indices(a::MultiFieldArray{T,N,A},I)  where {T,N,A}
   bc=Vector{Int}(undef,N)
   bi=Vector{Int}(undef,N)
-  sizes=a.cumulative_block_sizes
+  if (a.cumulative_block_sizes isa Nothing)
+    _get_cumulative_block_sizes(N,
+                                a.block_size,
+                                a.blocks,
+                                a.coordinates)
+  else
+    sizes=a.cumulative_block_sizes
+  end 
+
   for i=1:N
     b=1
     j=1

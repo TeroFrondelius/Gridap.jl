@@ -342,7 +342,6 @@ function Base.getindex(a::MultiFieldArray{T,N},
   start=1
   for is in cis
     p=a.ptrs[is]
-    println(p)
     if (p>0)
       final=start + length(a.blocks[p]) - 1
       if (i>=start && i<=final)

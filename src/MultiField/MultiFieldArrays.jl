@@ -301,10 +301,10 @@ function _find_block_and_local_indices(a::MultiFieldArray{T,N,A},I)  where {T,N,
   bc=Vector{Int}(undef,N)
   bi=Vector{Int}(undef,N)
   if (a.cumulative_block_sizes isa Nothing)
-    _get_cumulative_block_sizes(N,
-                                a.block_size,
-                                a.blocks,
-                                a.coordinates)
+    sizes=_get_cumulative_block_sizes(N,
+                                      a.block_size,
+                                      a.blocks,
+                                      a.coordinates)
   else
     sizes=a.cumulative_block_sizes
   end 

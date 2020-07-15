@@ -5,21 +5,22 @@ struct CDConformity{D} <: Conformity
   cont::NTuple{D,Int}
 end
 
-
-function LagrangianRefFE(::Type{T},p::ExtrusionPolytope{D},order::Int,cont) where {T,D}
-  CDLagrangianRefFE(T,p,order,cont)
+function get_face_own_nodes(reffe::GenericLagrangianRefFE{<:CDConformity},conf::CDConformity)
+  _cd_get_face_own_nodes(reffe,conf)
 end
 
-function LagrangianRefFE(::Type{T},p::ExtrusionPolytope{D},orders,cont) where {T,D}
-  CDLagrangianRefFE(T,p,orders,cont)
+function get_face_own_nodes(reffe::GenericLagrangianRefFE{GradConformity},conf::CDConformity)
+  _cd_get_face_own_nodes(reffe,conf)
 end
 
-function CDLagrangianRefFE(::Type{T},p::ExtrusionPolytope{D},order::Int,cont) where {T,D}
+# Constructors
+
+function _CDLagrangianRefFE(::Type{T},p::ExtrusionPolytope{D},order::Int,cont) where {T,D}
   orders = tfill(order,Val{D}())
-  CDLagrangianRefFE(T,p,orders,cont)
+  _CDLagrangianRefFE(T,p,orders,cont)
 end
 
-function CDLagrangianRefFE(::Type{T},p::ExtrusionPolytope{D},orders,cont) where {T,D}
+function _CDLagrangianRefFE(::Type{T},p::ExtrusionPolytope{D},orders,cont) where {T,D}
   cond(c,o) = ( o > 0 || c == DISC )
   @assert all([cond(c,o) for (c,o) in zip(cont,orders)])
   _cd_lagrangian_ref_fe(T,p,orders,cont)
@@ -43,26 +44,31 @@ function _cd_lagrangian_ref_fe(::Type{T},p::ExtrusionPolytope{D},orders,cont) wh
   face_own_dofs = _generate_face_own_dofs(face_own_nodes, dofs.node_and_comp_to_dof)
   face_dofs = _compute_face_nodes(p,face_own_dofs)
 
-  face_own_dofs_permutations = _trivial_face_own_dofs_permutations(face_own_dofs)
+  data = nothing
 
-  GenericRefFE(
+  reffe = GenericRefFE(
       ndofs,
       p,
       prebasis,
       dofs,
       CDConformity(Tuple(cont)),
-      face_own_dofs,
-      face_own_dofs_permutations,
+      data,
       face_dofs)
 
+  GenericLagrangianRefFE(reffe,face_nodes)
 end
 
-function get_face_own_dofs(reffe::GenericRefFE,conf::CDConformity)
-  _cd_get_face_own_dofs(reffe,conf)
-end
-
-function get_face_own_dofs(reffe::LagrangianRefFE,conf::CDConformity)
-  _cd_get_face_own_dofs(reffe,conf)
+function _cd_get_face_own_nodes(reffe,conf::CDConformity)
+  p = get_polytope(reffe)
+  orders = get_orders(get_prebasis(reffe))
+  cont = conf.cont
+  cond(c,o) = ( o > 0 || c == DISC )
+  @assert all([cond(c,o) for (c,o) in zip(cont,orders)])
+  p = get_polytope(reffe)
+  dofs = get_dof_basis(reffe)
+  @assert is_n_cube(p)
+  face_own_nodes = _compute_cd_face_own_nodes(p,orders,cont)
+  face_own_nodes
 end
 
 function _cd_get_face_own_dofs(reffe,conf::CDConformity)
@@ -77,20 +83,6 @@ function _cd_get_face_own_dofs(reffe,conf::CDConformity)
   face_own_nodes = _compute_cd_face_own_nodes(p,orders,cont)
   face_own_dofs = _generate_face_own_dofs(face_own_nodes, dofs.node_and_comp_to_dof)
   face_own_dofs
-end
-
-function get_face_own_dofs_permutations(reffe::GenericRefFE,conf::CDConformity)
-  _cd_get_face_own_dofs_permutations(reffe,conf)
-end
-
-function get_face_own_dofs_permutations(reffe::LagrangianRefFE,conf::CDConformity)
-  _cd_get_face_own_dofs_permutations(reffe,conf)
-end
-
-function _cd_get_face_own_dofs_permutations(reffe,conf::CDConformity)
-  face_own_dofs = get_face_own_dofs(reffe,conf)
-  face_own_dofs_permutations = _trivial_face_own_dofs_permutations(face_own_dofs)
-  face_own_dofs_permutations
 end
 
 function cd_compute_nodes(p::Polytope{D},orders) where D

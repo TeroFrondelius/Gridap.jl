@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.13.0] - Unreleased 
+## [0.13.0] - 2020-07-23
 
 ### Added
+  - Automatic differentiation for symmetric gradient, i.e. `ε(u)` for a given vector-valued function `u`. Since PR [#327](https://github.com/gridap/Gridap.jl/pull/327/).
   - Added missing SparseMatrixAssembler constructor for MultiFieldFESpaces. Since PR [#320](https://github.com/gridap/Gridap.jl/pull/320/).
   - kw-argument `space` to `LagrangianRefFE` constructor in order to select the type of underlying polynomial space, i.e., `:Q`, `:S`, or `:P`. Since PR [#321](https://github.com/gridap/Gridap.jl/pull/321).
 
@@ -25,8 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Removed struct `DiscRefFE`.
 
 ### Fixed
+  - Better handling of FE terms defined on empty triangulations. Since PR [#329](https://github.com/gridap/Gridap.jl/pull/329).
   - Replaced `+=` by `add_entry!`. Since PR [#316](https://github.com/gridap/Gridap.jl/pull/316).
-
+  - Minor fix to let Vtk.jl support changes in Vtk 1.7.X versus 1.6.X. Since PR [#324](https://github.com/gridap/Gridap.jl/pull/324).
+  
 ## [0.12.0] - 2020-07-07
 
 ### Added

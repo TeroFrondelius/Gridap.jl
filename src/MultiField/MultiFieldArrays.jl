@@ -1,11 +1,13 @@
 
 """
 """
-struct MultiFieldArray{T,N,A<:AbstractArray{T,N}} <: GridapType
+struct MultiFieldArray{T,N,A<:AbstractArray{T,N}} <: AbstractArray{T,N}
   blocks::Vector{A}
   coordinates::Vector{NTuple{N,Int}}
   ptrs::Array{Int,N}
   block_size::NTuple{N,Int}
+  scalar_size::Union{NTuple{N,Int},Nothing}
+  cumulative_block_sizes::Union{Vector{Vector{Int}},Nothing}
 
   function MultiFieldArray(
     blocks::Vector{A},
@@ -16,7 +18,17 @@ struct MultiFieldArray{T,N,A<:AbstractArray{T,N}} <: GridapType
     @assert _no_has_repeaded_blocks(coordinates) msg
     ptrs = _prepare_ptrs(coordinates)
     block_size = _get_block_size(coordinates)
-    new{T,N,A}(blocks,coordinates,ptrs,block_size)
+    scalar_size = _get_scalar_size(N,blocks,coordinates,block_size)
+    cumulative_block_sizes = _get_cumulative_block_sizes(N,
+                                                         block_size,
+                                                         blocks,
+                                                         coordinates)
+    new{T,N,A}(blocks,
+               coordinates,
+               ptrs,
+               block_size,
+               scalar_size,
+               cumulative_block_sizes)
   end
 end
 
@@ -108,8 +120,8 @@ end
 
 function add_to_array!(a::MultiFieldArray{Ta,N},b::MultiFieldArray{Tb,N},combine=+) where {Ta,Tb,N}
   for coords in b.coordinates
-    ak = a[coords...]
-    bk = b[coords...]
+    ak = a.blocks[a.ptrs[coords...]]
+    bk = b.blocks[b.ptrs[coords...]]
     add_to_array!(ak,bk,combine)
   end
   a
@@ -216,15 +228,163 @@ function _move_cached_arrays!(r::MultiFieldArray,c::MultiFieldArray)
   end
 end
 
-function Base.getindex(a::MultiFieldArray{T,N},I::Vararg{Int,N}) where {T,N}
-  p = a.ptrs[I...]
-  @assert p > 0 "You are attempting to access a block that is not stored"
-  a.blocks[p]
+function _get_scalar_size(N,blocks,coordinates,block_size)
+  try 
+     (length(blocks)>0) && (blocks[1])  
+  catch  
+     return nothing 
+  end 
+  s=zeros(Int,N)
+  visited_coordinates = Vector{Vector{Bool}}(undef,N)
+  for i=1:N
+     visited_coordinates[i] = fill(false,block_size[i])
+  end 
+  for (icoord,coord) in enumerate(coordinates)
+    for (i,j) in enumerate(coord)
+      if (!visited_coordinates[i][j])
+        visited_coordinates[i][j]=true
+        s[i] += size(blocks[icoord])[i]
+      end 
+    end 
+  end
+  Tuple(s) 
+end 
+
+function Base.size(a::MultiFieldArray{T,N}) where {T,N}
+  if ( a.scalar_size isa Nothing )
+    _get_scalar_size(N,a.blocks,a.coordinates,a.block_size)
+  else
+    a.scalar_size
+  end
 end
 
-function Base.getindex(a::MultiFieldArray,i::Integer)
-  p = a.ptrs[i]
-  @assert p > 0 "You are attempting to access a block that is not stored"
-  a.blocks[p]
+function Base.length(a::MultiFieldArray)
+  result=0
+  for i=1:length(a.blocks)
+    result=result+length(a.blocks[i])
+  end 
+  result
 end
 
+function _get_cumulative_block_sizes(N, 
+                                     block_size,
+                                     blocks,
+                                     coordinates)
+  try 
+     (length(blocks)>0) && (blocks[1])  
+  catch  
+     return nothing 
+  end 
+  result  = Vector{Vector{Int}}(undef,N)
+  visited = Vector{Vector{Bool}}(undef,N)
+  for i=1:N
+    result[i] = fill(0,block_size[i])
+    visited[i] = fill(false,block_size[i])
+  end 
+  for (icoord,coord) in enumerate(coordinates)
+    for (i,j) in enumerate(coord)
+      if (!visited[i][j])
+         visited[i][j]=true
+         result[i][j]=size(blocks[icoord])[i]
+      end
+    end 
+  end
+  for i=1:length(result)
+   for j=2:length(result[i])
+     result[i][j] += result[i][j-1]
+   end
+  end
+  result
+end
+
+function _find_block_and_local_indices(a::MultiFieldArray{T,N,A},I)  where {T,N,A}
+  bc=Vector{Int}(undef,N)
+  bi=Vector{Int}(undef,N)
+  if (a.cumulative_block_sizes isa Nothing)
+    sizes=_get_cumulative_block_sizes(N,
+                                      a.block_size,
+                                      a.blocks,
+                                      a.coordinates)
+  else
+    sizes=a.cumulative_block_sizes
+  end 
+
+  for i=1:N
+    b=1
+    j=1
+    _I = I[i]
+    if ( _I > sizes[i][j] )
+      while ( _I > sizes[i][j] && _I <= sizes[i][j+1] )
+        b+=1
+        j+=1
+      end 
+      _I = _I - sizes[i][j-1]
+    end
+    bc[i] = b
+    bi[i] = _I
+  end
+  (Tuple(bc),Tuple(bi))
+end 
+
+function Base.getindex(
+  a::MultiFieldArray{T,N},
+  I::Vararg{Int,N}) where {T,N}
+  @assert length(I) == N  
+  (bc,bi) = _find_block_and_local_indices(a,I)
+  p=a.ptrs[bc...]
+  @assert p > 0 "You are attempting to access a block that is not stored"
+  a.blocks[a.ptrs[bc...]][bi...]
+end
+
+function Base.getindex(a::MultiFieldArray{T,N},
+                     i::Integer) where {T,N}
+  cis=CartesianIndices(a.block_size)
+  start=1
+  for is in cis
+    p=a.ptrs[is]
+    if (p>0)
+      final=start + length(a.blocks[p]) - 1
+      if (i>=start && i<=final)
+        return a.blocks[p][i-start+1]
+      end
+      start=final+1
+    end
+  end
+  @assert false "Index out of range"
+end
+
+function Base.iterate(a::MultiFieldArray)
+  cis=CartesianIndices(a.block_size)
+  start=1
+  for (i,is) in enumerate(cis)
+    p=a.ptrs[is]
+    if (p>0)
+      final=start+length(a.blocks[p])-1
+      entry=a.blocks[p][1]
+      next=2
+      return (entry,(cis,i,start,final,next))
+    end
+  end
+end
+
+function Base.iterate(a::MultiFieldArray,state)
+  cis,i,start,final,current=state
+  is=cis[i]
+  p=a.ptrs[is]
+  if (current >= start && current <= final)
+    entry=a.blocks[p][current-start+1]
+    return (entry,(cis,i,start,final,current+1))
+  else 
+    #Search for the next block 
+    for j=i+1:length(cis)
+      is=cis[j]
+      p=a.ptrs[is]
+      if (p>0)
+        start=final+1
+        final=start+length(a.blocks[p])-1
+        entry=a.blocks[p][1]
+        return (entry,(cis,j,start,final,start+1))
+      end
+    end 
+  end
+end

@@ -38,8 +38,8 @@ a = MultiFieldArray(blocks,coordinates)
 @test num_stored_blocks(a) == 3
 @test get_block_size(a) == (2,2)
 @test has_all_blocks(a) == false
-@test a[1,1] == A11
-@test a[2,1] == A21
+@test a.blocks[a.ptrs[1,1]] == A11
+@test a.blocks[a.ptrs[2,1]] == A21
 
 B1 = 10*ones(Int,3)
 B2 = 20*ones(Int,5)
@@ -87,5 +87,34 @@ mul!(c,a,b)
 
 add_to_array!(c,c)
 add_to_array!(c,10)
+
+B1 = Array{Int,2}(undef,3,7)
+B2 = Array{Int,2}(undef,5,2)
+current=1
+for i=1:length(B1)
+    global current
+    B1[i]=current
+    current += 1
+end    
+
+for i=1:length(B2)
+    global current
+    B2[i]=current
+    current += 1
+end
+
+blocks = [B1,B2]
+coordinates = [(1,1),(2,2)]
+b = MultiFieldArray(blocks,coordinates)
+
+@test size(b)==(8,9)
+@test length(b)==31
+@test b[1,1]==1
+@test b[3,7]==21
+@test b[4,8]==22
+@test b[8,9]==31
+for (i,entry) in enumerate(b)
+   @test entry == i
+end
 
 end # module
